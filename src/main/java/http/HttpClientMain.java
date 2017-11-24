@@ -2,9 +2,7 @@ package http;
 
 import org.apache.htrace.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.http.HttpEntity;
-import org.apache.http.client.methods.CloseableHttpResponse;
-import org.apache.http.client.methods.HttpGet;
-import org.apache.http.client.methods.HttpPatch;
+import org.apache.http.client.methods.*;
 import org.apache.http.entity.StringEntity;
 import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.http.impl.client.HttpClients;
@@ -16,9 +14,7 @@ import org.apache.http.util.EntityUtils;
 import java.io.BufferedReader;
 import java.io.FileReader;
 import java.io.IOException;
-import java.util.Arrays;
-import java.util.HashMap;
-import java.util.Map;
+import java.util.*;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadPoolExecutor;
@@ -45,37 +41,42 @@ class HttpClientMain {
                 .build();
 
 
-        ThreadPoolExecutor threadPoolExecutor = new ThreadPoolExecutor(12, 12, 0L, TimeUnit.MILLISECONDS,
-                new ArrayBlockingQueue(12),
+        ThreadPoolExecutor threadPoolExecutor = new ThreadPoolExecutor(13, 13, 0L, TimeUnit.MILLISECONDS,
+                new ArrayBlockingQueue(1000),
                 Executors.defaultThreadFactory(),
                 new ThreadPoolExecutor.CallerRunsPolicy());
 
-        String fileName = "/var/tmp/ids.txt";
-        BufferedReader br = null;
-        FileReader fr = null;
-        try {
-            fr = new FileReader(fileName);
-            br = new BufferedReader(fr);
-            String sCurrentLine;
-            br = new BufferedReader(new FileReader(fileName));
+        String[] files = {"whatsapp.list"};
 
-            while ((sCurrentLine = br.readLine()) != null) {
-                threadPoolExecutor.submit(new Worker(httpclient,sCurrentLine));
-            }
-        } catch (IOException e) {
-            e.printStackTrace();
-        } finally {
+        for (int i = 0; i < files.length; i++ ) {
+            String fileName = "/var/tmp/"+files[i];
+            System.out.println("Reading file : " + fileName);
+            BufferedReader br = null;
+            FileReader fr = null;
             try {
-                if (br != null)
-                    br.close();
-                if (fr != null)
-                    fr.close();
-            } catch (IOException ex) {
-                ex.printStackTrace();
+                fr = new FileReader(fileName);
+                br = new BufferedReader(fr);
+                String sCurrentLine;
+                br = new BufferedReader(new FileReader(fileName));
+
+                while ((sCurrentLine = br.readLine()) != null) {
+                threadPoolExecutor.submit(new Worker(httpclient,sCurrentLine));
+                    }
+            } catch (IOException e) {
+                e.printStackTrace();
+            } finally {
+                try {
+                    if (br != null)
+                        br.close();
+                    if (fr != null)
+                        fr.close();
+                } catch (IOException ex) {
+                    ex.printStackTrace();
+                }
             }
         }
 
-        Thread.sleep(1000*60*60);
+        Thread.sleep(1000 * 60 * 60);
     }
 
     /**
@@ -95,49 +96,24 @@ class HttpClientMain {
 
         @Override
         public void run() {
+
+            HttpPut httpPut = new HttpPut("http://10.47.4.150/v1/registration/wa/flipkart");
             try {
-                HttpGet httpget = new HttpGet("http://10.33.109.245:8000/v1/apps/retail/devices/" + deviceId);
-                CloseableHttpResponse response = httpClient.execute(httpget, context);
-                CloseableHttpResponse responseConnekt = null;
-                try {
-                    HttpEntity entity = response.getEntity();
-                    if (entity != null) {
-                        byte[] bytes = EntityUtils.toByteArray(entity);
-                        if (response.getStatusLine().getStatusCode() != 200) {
-                            System.out.println("non 200 for " + deviceId);
-                            return;
-                        }
-
-                        Map<String, Object> responseMap = objectMapper.readValue(bytes, HashMap.class);
-                        System.out.println("deviceService response is " + ((Map<String, String>) responseMap.get("data")).get("appVersion"));
-
-                        String appVersion = ((Map<String, String>) responseMap.get("data")).get("appVersion");
-                        HttpPatch httpPatch = new HttpPatch("http://10.47.0.120/v1/registration/push/unknown/RetailApp/" + deviceId);
-                        httpPatch.setHeader("x-api-key", "b0979afd-2ce3-4786-af62-ab53f88204ff");
-                        httpPatch.setHeader("content-type", "application/json");
-                        StringEntity entity1 = new StringEntity("{\"appVerison\": \"" + appVersion + "\"}");
-                        httpPatch.setEntity(entity1);
-                        responseConnekt = httpClient.execute(httpget, context);
-                        if (responseConnekt.getStatusLine().getStatusCode() == 200) {
-                            System.out.println("success:" + deviceId);
-                        } else {
-                            System.out.println("failes:" + deviceId + " status " + responseConnekt.getStatusLine().getStatusCode());
-                        }
-
-                    }
-                } finally {
-                    if (response != null) {
-                        response.close();
-                    }
-                    if (responseConnekt!=null) {
-                        responseConnekt.close();
-                    }
+                httpPut.setHeader("x-api-key", "BM9kig6BGwN68aeJG2ESWkxt8");
+                httpPut.setHeader("Content-Type", "application/json");
+                StringEntity entity = new StringEntity("{\"user_identifier\": \"" + deviceId + "\"}");
+                httpPut.setEntity(entity);
+                CloseableHttpResponse responseUserSvc = httpClient.execute(httpPut, context);
+                if (responseUserSvc.getStatusLine().getStatusCode() == 202) {
+                    System.out.println("success:" + deviceId);
+                } else {
+                    System.out.println("failed:" + deviceId + " status " + responseUserSvc.getStatusLine().getStatusCode());
                 }
             } catch (Exception e) {
-                System.out.println("error: " + Arrays.toString(e.getStackTrace()));
+                System.out.println("User Service update failed : " + e.getMessage() + e.getCause());
+            } finally {
+                httpPut.releaseConnection();
             }
         }
-
     }
-
 }
